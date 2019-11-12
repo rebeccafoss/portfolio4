@@ -179,6 +179,13 @@ colnames(match) <- x
 
 S1d <- cbind(S1rem,match)
 
+resp_hr <- c('Resp1','Resp2','HR1','HR2')
+
+# making study3 times into seconds from miliseconds
+
+
+
+
 ```
 
 
@@ -193,39 +200,118 @@ A couple of tips:
 
 
 ```{r}
-# Define a function running the loading, artifact removal, scaling, downsampling, info adding.
+# Now we need to make sure all the data are meaningful or something has to be removed
+# E.g. "Study1_G1_T1_Synchronous" has one bad respiration signal. We could replace it with NAs
 
+# removed within the function later, now we also visualize some of the bad data.
+
+# plots plots plots
+overview <- physiological_data %>% 
+  group_by(file) %>% 
+  summarise(
+    sum(duplicated(Resp1)))
+bad1 <- data_preprocess("Data/Study2_G7_T3_TurnTaking.csv")
+bad2 <- data_preprocess("Data/Study1_G1_T2_TurnTaking.csv")
+bad3 <- data_preprocess("Data/Study1_G1_T1_Synchronous.csv")
+bad4 <- data_preprocess("Data/Study3_G9_T2_Synchronous.csv")
+bad5 <- data_preprocess("Data/Study4_G4_T5_TurnTaking.csv")
+bad6 <- data_preprocess("Data/Study4_G1_T1_Synchronous.csv")
+bad7 <- data_preprocess("Data/Study4_G4_T1_MovementGuided.csv")
+bad5_nonprepro <- read.csv("Data/Study4_G4_T5_TurnTaking.csv")
+
+# Plot
+p1 <- ggplot(data = bad1) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p2 <- ggplot(data = bad2) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p3 <- ggplot(data = bad3) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p4 <- ggplot(data = bad4) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p5 <- ggplot(data = bad5) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p6 <- ggplot(data = bad6) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+p7 <- ggplot(data = bad7) +
+  geom_path(aes(time, Resp1, color = "P1")) +
+  geom_path(aes(time, Resp2, color = "P2")) +
+  labs(x = "time", y = "Resp") +
+  theme(legend.position="bottom")
+
+plot_collection <- gridExtra::grid.arrange(p2, p3, p4, p5, p6, p7)
+```
+
+# FUNCTION
+```{r}
+# Define a function running the loading, artifact removal, scaling, downsampling, info adding.
 data_preprocess <- function(filename, threshold = 2.5){
   
-  # load data
-  file <- read.csv(filename)
+  #file loading
+  file <- read.csv(filename) 
   
-  # remove outliers
-  d1 <-  file %>% mutate_at(vars(Resp1,Resp2,HR1,HR2), removeOuts, threshold = 2.5)
+  # changing min colname to time for homogenous
+  colnames(file)[which(names(file) == "min")] <- "time" 
   
-  # scale
-  d1 <- d1 %>% mutate_at(c("Resp1", "Resp2", "HR1", "HR2"), z_scale)
+  # change all columns to numeric
+  file <- file %>% mutate_at(c("Resp1", "Resp2","HR1","HR2"), as.numeric) 
   
-  # downsample 
-  d1$row <- seq.int(nrow(d1))
+  # artifact removal
+  d1 <- file %>% mutate_at(c("Resp1", "Resp2","HR1","HR2"), removeOuts, threshold)
   
-  d1 = d1 %>%
-  group(n = 100, method = 'greedy') %>%
-  dplyr::summarise(
-  time = mean(time,na.rm=T),
-     HR1 = mean(HR1,na.rm=T),
-     HR2 = mean(HR2,na.rm=T),
-     Resp1 = mean(Resp1,na.rm=T),
-     Resp2 = mean(Resp2,na.rm=T),
-     rowname = row[1])
+  #scaling
+  d1 <- d1 %>% mutate_at(c("Resp1", "Resp2","HR1","HR2"), z_scale) 
   
-  # parse filename to extract study, diagnosis, subject and trial
-  match <- str_match(filename, "Study([\\d]+)_G([\\d]+)_T([\\d]+)_([:alpha:]+)")
-
+  # making new column with rows for the downsampling
+  d1$row <- seq.int(nrow(d1)) 
+  
+  d1 <- d1 %>% 
+    group(n = 100, method = 'greedy') %>%
+    dplyr::summarise(
+   time = mean(time,na.rm=T),
+   HR1 = mean(HR1,na.rm=T),
+   HR2 = mean(HR2,na.rm=T),
+   Resp1 = mean(Resp1,na.rm=T),
+   Resp2 = mean(Resp2,na.rm=T),
+   rowname = row[1]) #downsampling
+  
+  match <- str_match(filename, "data/Study([\\d]+)_G([\\d]+)_T([\\d]+)_([:alpha:]+)") #info adding
   x <- c("file", "study", "group", "trial", "condition")
-  colnames(match) <- x
   
+  colnames(match) <- x
+  d1 <- cbind(d1,match)
+  # list of dublicates and nondublicates
+   hmm1 <- ifelse(duplicated(d1$Resp1)==T,"duplicate","not-duplicate") 
+   hmm2 <- ifelse(duplicated(d1$Resp2)==T,"duplicate","not-duplicate")
+   if(sum(hmm1=="duplicate") >= 100 | sum(hmm2=="duplicate") >= 100) {
+     
+   } else {
+     
   return(d1)
+}
 
 }
 
@@ -238,16 +324,30 @@ phys_data = list.files(path = "/Users/rebeccakjeldsen/Dropbox/CogSci3/ExMet3/Por
   purrr::map_df(data_preprocess) # takes every file in the list. Applies read pitch function and rbinds the data it returns.
 
 
-         
-# Now we need to make sure all the data are meaningful or something has to be removed
-# E.g. "Study1_G1_T1_Synchronous" has one bad respiration signal. We could replace it with NAs
+```
 
-# plots plots plots
+# change time
+```{r}
+# Making a unique pair ID
+phys_data$study <- as.numeric(phys_data$study)
+phys_data$group <- as.numeric(phys_data$group)
+phys_data$time <- as.numeric(phys_data$time)
 
-# Remove bad data
+phys_data$uPairID <- (100 * phys_data$study + phys_data$group)
+
+#Normalizing the time values
+#Assuming that the large values are millisecond
+#choose 400 arbitrarily because it is above a reasonable minute count.
+phys_data[which(phys_data$time > 400),]$time <- phys_data[which(phys_data$time > 400),]$time / 1000 / 60
+ 
+#time since 0
+phys_data <- phys_data %>% group_by(uPairID, trial) %>% mutate(actual_time_min = time - min(time))
+
+# change timename
+colnames(phys_data)[2] <- "time_min"
 
 # Save the data
-
+write.csv(phys_data,"/Users/rebeccakjeldsen/Dropbox/CogSci3/ExMet3/Portfolios/portfolio4/data/phys_data.csv", row.names = FALSE)
 ```
 
 ## Now we need to run some analysis
